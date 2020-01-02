@@ -10,8 +10,7 @@ import (
 	"net/http"
 
 	"cloud.google.com/go/pubsub"
-	"golang.org/x/oauth2/google"
-	"google.golang.org/api/compute/v1"
+	"github.com/markkurossi/authorizer/utils"
 )
 
 const (
@@ -23,13 +22,13 @@ func Authorizer(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	credentials, err := google.FindDefaultCredentials(ctx, compute.ComputeScope)
+	projectID, err := utils.GetProjectID()
 	if err != nil {
 		fmt.Fprintf(w, "google.FindDefaultCredentials: %s\n", err)
 		return
 	}
 
-	client, err := pubsub.NewClient(ctx, credentials.ProjectID)
+	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
 		fmt.Fprintf(w, "NewClient failed: %s\n", err)
 		return

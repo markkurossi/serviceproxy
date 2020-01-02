@@ -15,4 +15,4 @@
 # vendor/
 
 # Binaries
-cmd/cmd
+apps/cmd/cmd
