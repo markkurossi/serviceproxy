@@ -5,6 +5,7 @@ go 1.13
 require (
 	cloud.google.com/go v0.50.0 // indirect
 	cloud.google.com/go/pubsub v1.1.0
+	github.com/GoogleCloudPlatform/functions-framework-go v1.0.0
 	github.com/golang/groupcache v0.0.0-20191227052852-215e87163ea7 // indirect
 	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect

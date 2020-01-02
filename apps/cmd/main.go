@@ -9,11 +9,11 @@ import (
 	"os"
 
 	"github.com/GoogleCloudPlatform/functions-framework-go/funcframework"
-	"markkurossi.com/authorizer"
+	"github.com/markkurossi/authorizer"
 )
 
 func main() {
-	funcframework.RegisterHTTPFunction("/", authorizer.HelloWorld)
+	funcframework.RegisterHTTPFunction("/", authorizer.Authorizer)
 	// Use PORT environment variable, or default to 8080.
 	port := "8080"
 	if envPort := os.Getenv("PORT"); envPort != "" {
