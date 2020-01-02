@@ -2,7 +2,7 @@
  * project.go
  */
 
-package utils
+package authorizer
 
 import (
 	"context"

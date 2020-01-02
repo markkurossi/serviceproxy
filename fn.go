@@ -10,7 +10,6 @@ import (
 	"net/http"
 
 	"cloud.google.com/go/pubsub"
-	"github.com/markkurossi/authorizer/utils"
 )
 
 const (
@@ -22,7 +21,7 @@ func Authorizer(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	projectID, err := utils.GetProjectID()
+	projectID, err := GetProjectID()
 	if err != nil {
 		fmt.Fprintf(w, "google.FindDefaultCredentials: %s\n", err)
 		return
