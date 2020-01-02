@@ -18,8 +18,7 @@ const (
 	TOPIC_AUTHORIZER = "Authorizer"
 )
 
-// HelloWorld writes "Hello, World!" to the HTTP response.
-func HelloWorld(w http.ResponseWriter, r *http.Request) {
+func Authorizer(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Hello, World!\n")
 
 	ctx := context.Background()
