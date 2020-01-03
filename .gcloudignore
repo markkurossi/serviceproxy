@@ -12,6 +12,9 @@
 # below:
 .git
 .gitignore
+api
+docs
+secsh
 
 node_modules
 #!include:.gitignore
