@@ -8,9 +8,7 @@ require (
 	github.com/GoogleCloudPlatform/functions-framework-go v1.0.0
 	github.com/golang/groupcache v0.0.0-20191227052852-215e87163ea7 // indirect
 	github.com/google/go-cmp v0.3.1 // indirect
-	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/jstemmer/go-junit-report v0.9.1 // indirect
-	github.com/markkurossi/authorizer/utils v0.0.0-20200102220917-a533853f42b2
 	go.opencensus.io v0.22.2 // indirect
 	golang.org/x/exp v0.0.0-20191227195350-da58074b4299 // indirect
 	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553 // indirect
