@@ -1,5 +1,5 @@
 /*
- * function.go
+ * agent.go
  */
 
 package authorizer
