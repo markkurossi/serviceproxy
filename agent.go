@@ -15,6 +15,7 @@ import (
 
 func Agent(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Hello, Agent\n")
+	trace := NewTrace()
 
 	ctx := context.Background()
 
@@ -23,6 +24,7 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "google.FindDefaultCredentials: %s\n", err)
 		return
 	}
+	trace.Event("Resolved project ID")
 
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
@@ -43,7 +45,9 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "client.CreateTopic: %s\n", err)
 			return
 		}
+		trace.Event("Created topic")
 	}
+	trace.Event("Got topic")
 
 	sub := client.Subscription(SUB_REQUESTS)
 	ok, err = sub.Exists(ctx)
@@ -62,7 +66,9 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "client.CreateSubscription: %s\n", err)
 			return
 		}
+		trace.Event("Created subscription")
 	}
+	trace.Event("Got subscription")
 
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -70,11 +76,13 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "m: ID=%s, Data=%q, Attributes=%q\n",
 			m.ID, m.Data, m.Attributes)
 		m.Ack()
+		trace.Event("Got message")
 
 		err := handleRequest(client, m)
 		if err != nil {
 			fmt.Fprintf(w, "handleRequest: %s\n", err)
 		}
+		trace.Event("Handled message")
 
 		cancel()
 	})
@@ -82,6 +90,7 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "sub.Receive: %s\n", err)
 		return
 	}
+	trace.End(w)
 
 	fmt.Fprint(w, "Goodbye, Agent!\n")
 }
