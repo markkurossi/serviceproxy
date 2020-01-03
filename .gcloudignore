@@ -16,5 +16,8 @@
 node_modules
 #!include:.gitignore
 
-cmd
+GNUmakefile
+LICENSE
+README.md
+apps
 *~
