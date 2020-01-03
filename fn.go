@@ -5,6 +5,7 @@
 package authorizer
 
 import (
+	"fmt"
 	"net/http"
 )
 
@@ -20,9 +21,13 @@ var (
 func init() {
 	mux = http.NewServeMux()
 	mux.HandleFunc("/agent", Agent)
-	mux.HandleFunc("/client", Client)
+	mux.HandleFunc("/client/", Client)
 }
 
 func Authorizer(w http.ResponseWriter, r *http.Request) {
 	mux.ServeHTTP(w, r)
+}
+
+func Error500f(w http.ResponseWriter, format string, a ...interface{}) {
+	http.Error(w, fmt.Sprintf(format, a...), http.StatusInternalServerError)
 }

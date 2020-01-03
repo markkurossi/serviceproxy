@@ -16,3 +16,5 @@
 
 # Binaries
 apps/cmd/cmd
+apps/authorizer-agent/authorizer-agent
+
