@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net/http"
+	"time"
 
 	"cloud.google.com/go/pubsub"
 )
@@ -45,6 +46,20 @@ func Client(w http.ResponseWriter, r *http.Request) {
 	}
 	defer respTopic.Delete(ctx)
 
+	// Subscribe for response.
+	sub, err := client.CreateSubscription(ctx, fmt.Sprintf("resp%x", id[:]),
+		pubsub.SubscriptionConfig{
+			Topic:            respTopic,
+			AckDeadline:      10 * time.Second,
+			ExpirationPolicy: 25 * time.Hour,
+		})
+	if err != nil {
+		fmt.Fprintf(w, "client.CreateSubscription: %s\n", err)
+		return
+	}
+	defer sub.Delete(ctx)
+
+	// Send request.
 	reqTopic := client.Topic(TOPIC_AUTHORIZER)
 	defer reqTopic.Stop()
 	result := reqTopic.Publish(ctx, &pubsub.Message{
@@ -59,6 +74,19 @@ func Client(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Fprintf(w, "request ID %s\n", reqID)
+
+	// Receive response.
+	cctx, cancel := context.WithCancel(ctx)
+	err = sub.Receive(cctx, func(ctx context.Context, m *pubsub.Message) {
+		fmt.Fprintf(w, "m: ID=%s, Data=%q, Attributes=%q\n",
+			m.ID, m.Data, m.Attributes)
+		m.Ack()
+		cancel()
+	})
+	if err != nil {
+		fmt.Fprintf(w, "sub.Receive: %s\n", err)
+		return
+	}
 
 	fmt.Fprint(w, "Goodbye, Client!\n")
 }

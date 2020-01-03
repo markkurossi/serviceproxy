@@ -70,6 +70,12 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "m: ID=%s, Data=%q, Attributes=%q\n",
 			m.ID, m.Data, m.Attributes)
 		m.Ack()
+
+		err := handleRequest(client, m)
+		if err != nil {
+			fmt.Fprintf(w, "handleRequest: %s\n", err)
+		}
+
 		cancel()
 	})
 	if err != nil {
@@ -78,4 +84,20 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprint(w, "Goodbye, Agent!\n")
+}
+
+func handleRequest(client *pubsub.Client, req *pubsub.Message) error {
+	topicID, ok := req.Attributes["response"]
+	if !ok {
+		return fmt.Errorf("No response ID in request")
+	}
+	ctx := context.Background()
+
+	topic := client.Topic(topicID)
+	defer topic.Stop()
+	result := topic.Publish(ctx, &pubsub.Message{
+		Data: []byte("Hello, Client!"),
+	})
+	_, err := result.Get(ctx)
+	return err
 }
