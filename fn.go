@@ -22,7 +22,9 @@ var (
 
 func init() {
 	mux = http.NewServeMux()
-	mux.HandleFunc("/agent", Agent)
+	mux.HandleFunc("/agents", Agents)
+	mux.HandleFunc("/agents/", Agent)
+	mux.HandleFunc("/clients", Clients)
 	mux.HandleFunc("/clients/", Client)
 }
 

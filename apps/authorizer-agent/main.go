@@ -74,12 +74,13 @@ func main() {
 		if err != nil {
 			log.Fatalf("Accept: %s\n", err)
 		}
-		go func() {
-			err := handleConnection(conn, *endpoint)
+		log.Printf("New connections\n")
+		go func(c net.Conn) {
+			err := handleConnection(c, *endpoint)
 			if err != nil && err != io.EOF {
-				log.Printf("handleConnection: %s\n", err)
+				log.Printf("Connection error: %s\n", err)
 			}
-		}()
+		}(conn)
 	}
 }
 
@@ -89,6 +90,7 @@ func handleConnection(conn net.Conn, url string) error {
 		return err
 	}
 
+	log.Printf("Connecting to server\n")
 	err = client.Connect()
 	if err != nil {
 		return err
@@ -102,6 +104,7 @@ func handleConnection(conn net.Conn, url string) error {
 		}
 	}()
 
+	log.Printf("Processing messages\n")
 	for {
 		msg, err := agent.Read(conn)
 		if err != nil {

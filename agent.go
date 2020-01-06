@@ -6,93 +6,139 @@ package authorizer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"regexp"
 	"time"
 
 	"cloud.google.com/go/pubsub"
+	"github.com/markkurossi/authorizer/api"
 )
 
-func Agent(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Hello, Agent\n")
-	trace := NewTrace()
+var (
+	reAgentPath = regexp.MustCompilePOSIX(`^/agents/([a-zA-Z][a-zA-Z0-9]+)$`)
+)
+
+func Agents(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s: %s\n", r.Method, r.URL.Path)
 
 	ctx := context.Background()
 
 	projectID, err := GetProjectID()
 	if err != nil {
-		fmt.Fprintf(w, "google.FindDefaultCredentials: %s\n", err)
+		Error500f(w, "google.FindDefaultCredentials: %s", err)
 		return
 	}
-	trace.Event("Resolved project ID")
+	client, err := pubsub.NewClient(ctx, projectID)
+	if err != nil {
+		Error500f(w, "NewClient failed: %s", err)
+		return
+	}
+
+	switch r.Method {
+	case "POST":
+		// Register new agent.
+		topic := client.Topic(TOPIC_AUTHORIZER)
+		ok, err := topic.Exists(ctx)
+		if err != nil {
+			Error500f(w, "topic.Exists: %s", err)
+			return
+		}
+		if !ok {
+			topic, err = client.CreateTopic(ctx, TOPIC_AUTHORIZER)
+			if err != nil {
+				Error500f(w, "client.CreateTopic: %s", err)
+				return
+			}
+		}
+
+		sub := client.Subscription(SUB_REQUESTS)
+		ok, err = sub.Exists(ctx)
+		if err != nil {
+			Error500f(w, "sub.Exists: %s", err)
+			return
+		}
+		if !ok {
+			sub, err = client.CreateSubscription(ctx, SUB_REQUESTS,
+				pubsub.SubscriptionConfig{
+					Topic:            topic,
+					AckDeadline:      10 * time.Second,
+					ExpirationPolicy: 25 * time.Hour,
+				})
+			if err != nil {
+				Error500f(w, "client.CreateSubscription: %s", err)
+				return
+			}
+		}
+		result := &api.ServerConnectResult{
+			URL: "/agents/" + SUB_REQUESTS,
+		}
+		data, err := json.Marshal(result)
+		if err != nil {
+			Error500f(w, "json.Marshal: %s", err)
+			return
+		}
+		w.Write(data)
+
+	default:
+		Errorf(w, http.StatusBadRequest, "Unsupported method %s", r.Method)
+	}
+}
+
+func Agent(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s: %s\n", r.Method, r.URL.Path)
+
+	m := reAgentPath.FindStringSubmatch(r.URL.Path)
+	if m == nil {
+		Errorf(w, http.StatusBadRequest, "Invalid agent URL path")
+		return
+	}
+	agentID := m[1]
+
+	ctx := context.Background()
+
+	projectID, err := GetProjectID()
+	if err != nil {
+		Error500f(w, "google.FindDefaultCredentials: %s", err)
+		return
+	}
 
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
-		fmt.Fprintf(w, "NewClient failed: %s\n", err)
+		Error500f(w, "NewClient failed: %s", err)
 		return
 	}
 
-	topic := client.Topic(TOPIC_AUTHORIZER)
-	ok, err := topic.Exists(ctx)
-	if err != nil {
-		fmt.Fprintf(w, "topic.Exists: %s\n", err)
-		return
-	}
-	if !ok {
-		fmt.Fprintf(w, "Creating topic %s\n", TOPIC_AUTHORIZER)
-		topic, err = client.CreateTopic(ctx, TOPIC_AUTHORIZER)
+	sub := client.Subscription(agentID)
+
+	switch r.Method {
+	case "GET":
+		var response *pubsub.Message
+
+		cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+		err = sub.Receive(cctx, func(ctx context.Context, m *pubsub.Message) {
+			fmt.Printf("m: ID=%s, Data=%q, Attributes=%q\n",
+				m.ID, m.Data, m.Attributes)
+			response = m
+			m.Ack()
+			cancel()
+		})
 		if err != nil {
-			fmt.Fprintf(w, "client.CreateTopic: %s\n", err)
+			Error500f(w, "sub.Receive: %s", err)
 			return
 		}
-		trace.Event("Created topic")
-	}
-	trace.Event("Got topic")
-
-	sub := client.Subscription(SUB_REQUESTS)
-	ok, err = sub.Exists(ctx)
-	if err != nil {
-		fmt.Fprintf(w, "sub.Exists: %s\n", err)
-		return
-	}
-	if !ok {
-		sub, err = client.CreateSubscription(ctx, SUB_REQUESTS,
-			pubsub.SubscriptionConfig{
-				Topic:            topic,
-				AckDeadline:      10 * time.Second,
-				ExpirationPolicy: 25 * time.Hour,
-			})
-		if err != nil {
-			fmt.Fprintf(w, "client.CreateSubscription: %s\n", err)
-			return
+		if response == nil {
+			w.WriteHeader(http.StatusNoContent)
+		} else {
+			w.Write(response.Data)
 		}
-		trace.Event("Created subscription")
+
+	default:
+		Errorf(w, http.StatusBadRequest, "Unsupported method %s", r.Method)
 	}
-	trace.Event("Got subscription")
-
-	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	err = sub.Receive(cctx, func(ctx context.Context, m *pubsub.Message) {
-		fmt.Fprintf(w, "m: ID=%s, Data=%q, Attributes=%q\n",
-			m.ID, m.Data, m.Attributes)
-		m.Ack()
-		trace.Event("Got message")
-
-		err := handleRequest(client, m)
-		if err != nil {
-			fmt.Fprintf(w, "handleRequest: %s\n", err)
-		}
-		trace.Event("Handled message")
-
-		cancel()
-	})
-	if err != nil {
-		fmt.Fprintf(w, "sub.Receive: %s\n", err)
-		return
-	}
-	trace.End(w)
-
-	fmt.Fprint(w, "Goodbye, Agent!\n")
 }
 
 func handleRequest(client *pubsub.Client, req *pubsub.Message) error {

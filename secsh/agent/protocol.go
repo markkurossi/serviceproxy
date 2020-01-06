@@ -71,6 +71,10 @@ var (
 
 type Message []byte
 
+const (
+	MAX_MESSAGE_LEN = 65535
+)
+
 func (m Message) Type() Type {
 	return Type(m[4])
 }
@@ -102,7 +106,7 @@ func Read(r io.Reader) (Message, error) {
 		return nil, err
 	}
 	length := bo.Uint32(buf[:])
-	if length < 1 || length > 65535 {
+	if length < 1 || length > MAX_MESSAGE_LEN {
 		return nil, fmt.Errorf("Invalid message length %d", length)
 	}
 
@@ -112,6 +116,21 @@ func Read(r io.Reader) (Message, error) {
 	_, err = io.ReadFull(r, data[4:])
 	if err != nil {
 		return nil, err
+	}
+	return Message(data), nil
+}
+
+func Wrap(data []byte) (Message, error) {
+	if len(data) < 5 {
+		return nil, fmt.Errorf("Truncated message")
+	}
+	length := bo.Uint32(data)
+	if length < 1 || length > MAX_MESSAGE_LEN {
+		return nil, fmt.Errorf("Invalid message length %d", length)
+	}
+	if len(data) != int(4+length) {
+		return nil, fmt.Errorf("Message length mismatch: %d != %d",
+			len(data), 4+length)
 	}
 	return Message(data), nil
 }

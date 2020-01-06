@@ -19,15 +19,73 @@ import (
 )
 
 var (
-	rePath = regexp.MustCompilePOSIX(`^/clients/([a-f0-9]*)$`)
+	rePath = regexp.MustCompilePOSIX(`^/clients/([a-f0-9]{16,32})$`)
 )
 
+// Clients hand REST calls to the "/clients" URI.
+func Clients(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s: %s\n", r.Method, r.URL.Path)
+
+	ctx := context.Background()
+
+	projectID, err := GetProjectID()
+	if err != nil {
+		Error500f(w, "google.FindDefaultCredentials: %s", err)
+		return
+	}
+	client, err := pubsub.NewClient(ctx, projectID)
+	if err != nil {
+		Error500f(w, "NewClient failed: %s", err)
+		return
+	}
+
+	switch r.Method {
+	case "POST":
+		// Register new client.
+		id, err := NewID()
+		if err != nil {
+			Error500f(w, "NewID: %s", err)
+			return
+		}
+		// Create a topic for response.
+		respTopic, err := client.CreateTopic(ctx, id.Topic())
+		if err != nil {
+			Error500f(w, "client.CreateTopic: %s", err)
+			return
+		}
+		// Subscribe for response.
+		_, err = client.CreateSubscription(ctx, id.Subscription(),
+			pubsub.SubscriptionConfig{
+				Topic:            respTopic,
+				AckDeadline:      10 * time.Second,
+				ExpirationPolicy: 25 * time.Hour,
+			})
+		if err != nil {
+			Error500f(w, "client.CreateSubscription: %s", err)
+			return
+		}
+		result := &api.ClientConnectResult{
+			URL: "/clients/" + id.String(),
+		}
+		data, err := json.Marshal(result)
+		if err != nil {
+			Error500f(w, "json.Marshal: %s", err)
+			return
+		}
+		w.Write(data)
+
+	default:
+		Errorf(w, http.StatusBadRequest, "Unsupported method %s", r.Method)
+	}
+}
+
+// Clients hand REST calls to the "/clients/{ID}" URI.
 func Client(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s: %s\n", r.Method, r.URL.Path)
 
 	m := rePath.FindStringSubmatch(r.URL.Path)
 	if m == nil {
-		http.Error(w, "Invalid client URL Path", http.StatusBadRequest)
+		Errorf(w, http.StatusBadRequest, "Invalid client URL path")
 		return
 	}
 	clientID := m[1]
@@ -39,56 +97,11 @@ func Client(w http.ResponseWriter, r *http.Request) {
 		Error500f(w, "google.FindDefaultCredentials: %s", err)
 		return
 	}
-
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
 		Error500f(w, "NewClient failed: %s", err)
 		return
 	}
-
-	if len(clientID) == 0 {
-		switch r.Method {
-		case "POST":
-			// Register new client.
-			id, err := NewID()
-			if err != nil {
-				Error500f(w, "NewID: %s", err)
-				return
-			}
-			// Create a topic for response.
-			respTopic, err := client.CreateTopic(ctx, id.Topic())
-			if err != nil {
-				Error500f(w, "client.CreateTopic: %s", err)
-				return
-			}
-			// Subscribe for response.
-			_, err = client.CreateSubscription(ctx, id.Subscription(),
-				pubsub.SubscriptionConfig{
-					Topic:            respTopic,
-					AckDeadline:      10 * time.Second,
-					ExpirationPolicy: 25 * time.Hour,
-				})
-			if err != nil {
-				Error500f(w, "client.CreateSubscription: %s", err)
-				return
-			}
-			result := &api.ConnectResult{
-				URL: "/clients/" + id.String(),
-			}
-			data, err := json.Marshal(result)
-			if err != nil {
-				Error500f(w, "json.Marshal: %s", err)
-				return
-			}
-			w.Write(data)
-
-		default:
-			Errorf(w, http.StatusBadRequest, "Unsupported method %s", r.Method)
-		}
-
-		return
-	}
-
 	id, err := ParseID(clientID)
 	if err != nil {
 		Error500f(w, "Invalid client ID: %s", err)
