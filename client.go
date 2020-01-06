@@ -103,19 +103,29 @@ func Client(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		fmt.Fprintf(w, "request ID %s\n", reqID)
+		fallthrough
 
 	case "GET":
 		// Receive response.
+
+		var response *pubsub.Message
+
 		cctx, cancel := context.WithCancel(ctx)
 		err = sub.Receive(cctx, func(ctx context.Context, m *pubsub.Message) {
 			fmt.Fprintf(w, "m: ID=%s, Data=%q, Attributes=%q\n",
 				m.ID, m.Data, m.Attributes)
+			response = m
 			m.Ack()
 			cancel()
 		})
 		if err != nil {
 			Error500f(w, "sub.Receive: %s", err)
 			return
+		}
+		if response == nil {
+			w.WriteHeader(http.StatusAccepted)
+		} else {
+			w.Write(response.Data)
 		}
 	}
 }

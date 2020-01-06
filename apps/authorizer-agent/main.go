@@ -9,6 +9,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -21,19 +22,24 @@ import (
 )
 
 func main() {
-	dir, err := ioutil.TempDir("", "authorizer")
-	if err != nil {
-		log.Fatalf("TempDir: %s\n", err)
-	}
-	path := filepath.Join(dir, "agent.sock")
+	bindAddress := flag.String("a", "", "Unix-domain socket bind address")
+	flag.Parse()
 
-	listener, err := net.Listen("unix", path)
+	if len(*bindAddress) == 0 {
+		dir, err := ioutil.TempDir("", "authorizer")
+		if err != nil {
+			log.Fatalf("TempDir: %s\n", err)
+		}
+		*bindAddress = filepath.Join(dir, "agent.sock")
+	}
+
+	listener, err := net.Listen("unix", *bindAddress)
 	if err != nil {
 		log.Fatalf("Listen: %s\n", err)
 	}
 	defer listener.Close()
 
-	fmt.Printf("SSH_AUTH_SOCK=%s\n", path)
+	fmt.Printf("SSH_AUTH_SOCK=%s\n", *bindAddress)
 
 	for {
 		conn, err := listener.Accept()
