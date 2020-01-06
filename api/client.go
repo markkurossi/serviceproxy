@@ -10,34 +10,96 @@ package api
 
 import (
 	"bytes"
-	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/markkurossi/authorizer/secsh/agent"
 )
 
 type Client struct {
-	http *http.Client
-	url  string
-	id   string
+	http    *http.Client
+	baseURL string
+	url     string
 }
 
-func NewClient() (*Client, error) {
-	var buf [16]byte
+func (client *Client) ID() string {
+	parts := strings.Split(client.url, "/")
+	return parts[len(parts)-1]
+}
 
-	_, err := rand.Read(buf[:])
-	if err != nil {
-		return nil, err
+func httpError(code int, data []byte) error {
+	if len(data) == 0 {
+		return fmt.Errorf("HTTP status %d", code)
 	}
-	id := fmt.Sprintf("%x", buf[:])
+	return fmt.Errorf("%d: %s", code, string(data))
+}
+
+func NewClient(endpoint string) (*Client, error) {
+	if strings.HasSuffix(endpoint, "/") {
+		endpoint = endpoint[0 : len(endpoint)-1]
+	}
 
 	return &Client{
-		http: new(http.Client),
-		url:  "http://localhost:8080/client/" + id,
-		id:   id,
+		http:    new(http.Client),
+		baseURL: endpoint,
 	}, nil
+}
+
+type ConnectResult struct {
+	URL string `json:"url"`
+}
+
+func (client *Client) Connect() error {
+	req, err := http.NewRequest("POST", client.baseURL+"/clients/", nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.http.Do(req)
+	if err != nil {
+		return err
+	}
+	data, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return httpError(resp.StatusCode, data)
+	}
+
+	response := new(ConnectResult)
+	err = json.Unmarshal(data, response)
+	if err != nil {
+		return err
+	}
+	client.url = client.baseURL + response.URL
+	fmt.Printf("client.URL=%s\n", client.url)
+	return nil
+}
+
+func (client *Client) Disconnect() error {
+	req, err := http.NewRequest("DELETE", client.url, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.http.Do(req)
+	if err != nil {
+		return err
+	}
+	data, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return httpError(resp.StatusCode, data)
+	}
+	return nil
 }
 
 func (client *Client) Call(msg agent.Message) (agent.Message, error) {
@@ -55,10 +117,11 @@ func (client *Client) Call(msg agent.Message) (agent.Message, error) {
 			return nil, err
 		}
 		fmt.Printf("Resp %v\n", resp)
+		data, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+
 		switch resp.StatusCode {
 		case http.StatusOK:
-			data, err := ioutil.ReadAll(resp.Body)
-			resp.Body.Close()
 			if err != nil {
 				return nil, err
 			}
@@ -76,7 +139,7 @@ func (client *Client) Call(msg agent.Message) (agent.Message, error) {
 
 		default:
 			resp.Body.Close()
-			return nil, fmt.Errorf("HTTP status %s", resp.Status)
+			return nil, httpError(resp.StatusCode, data)
 		}
 	}
 }

@@ -15,14 +15,19 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"path/filepath"
 
 	"github.com/markkurossi/authorizer/api"
 	"github.com/markkurossi/authorizer/secsh/agent"
 )
 
+var connections = make(map[string]*api.Client)
+
 func main() {
 	bindAddress := flag.String("a", "", "Unix-domain socket bind address")
+	endpoint := flag.String("u", "", "Authorizer endpoint URL")
 	flag.Parse()
 
 	if len(*bindAddress) == 0 {
@@ -32,6 +37,12 @@ func main() {
 		}
 		*bindAddress = filepath.Join(dir, "agent.sock")
 	}
+	if len(*endpoint) == 0 {
+		fmt.Printf("No authorizer URL specified\n")
+		os.Exit(1)
+	}
+
+	os.RemoveAll(*bindAddress)
 
 	listener, err := net.Listen("unix", *bindAddress)
 	if err != nil {
@@ -41,13 +52,30 @@ func main() {
 
 	fmt.Printf("SSH_AUTH_SOCK=%s\n", *bindAddress)
 
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		s := <-c
+		fmt.Println("signal", s)
+		for k, c := range connections {
+			fmt.Printf("%s...", k)
+			err = c.Disconnect()
+			if err != nil {
+				fmt.Printf("%s\n", err)
+			} else {
+				fmt.Println()
+			}
+		}
+		os.Exit(0)
+	}()
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Fatalf("Accept: %s\n", err)
 		}
 		go func() {
-			err := handleConnection(conn)
+			err := handleConnection(conn, *endpoint)
 			if err != nil && err != io.EOF {
 				log.Printf("handleConnection: %s\n", err)
 			}
@@ -55,11 +83,24 @@ func main() {
 	}
 }
 
-func handleConnection(conn net.Conn) error {
-	client, err := api.NewClient()
+func handleConnection(conn net.Conn, url string) error {
+	client, err := api.NewClient(url)
 	if err != nil {
 		return err
 	}
+
+	err = client.Connect()
+	if err != nil {
+		return err
+	}
+	connections[client.ID()] = client
+	defer func() {
+		delete(connections, client.ID())
+		err = client.Disconnect()
+		if err != nil {
+			fmt.Printf("%s: %s\n", client.ID(), err)
+		}
+	}()
 
 	for {
 		msg, err := agent.Read(conn)

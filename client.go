@@ -6,6 +6,7 @@ package authorizer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -14,14 +15,15 @@ import (
 	"time"
 
 	"cloud.google.com/go/pubsub"
+	"github.com/markkurossi/authorizer/api"
 )
 
 var (
-	rePath = regexp.MustCompilePOSIX(`^/client/([a-f0-9]{32,64})$`)
+	rePath = regexp.MustCompilePOSIX(`^/clients/([a-f0-9]*)$`)
 )
 
 func Client(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Client: path=%s\n", r.URL.Path)
+	log.Printf("%s: %s\n", r.Method, r.URL.Path)
 
 	m := rePath.FindStringSubmatch(r.URL.Path)
 	if m == nil {
@@ -29,7 +31,6 @@ func Client(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientID := m[1]
-	fmt.Printf("ClientID: %s\n", clientID)
 
 	ctx := context.Background()
 
@@ -45,40 +46,53 @@ func Client(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a topic for response.
-	respID := fmt.Sprintf("clnt%s", clientID)
-	respTopic := client.Topic(respID)
-	ok, err := respTopic.Exists(ctx)
-	if err != nil {
-		Error500f(w, "topic.Exists: %s", err)
-		return
-	}
-	if !ok {
-		respTopic, err = client.CreateTopic(ctx, respID)
-		if err != nil {
-			Error500f(w, "client.CreateTopic: %s", err)
-			return
+	if len(clientID) == 0 {
+		switch r.Method {
+		case "POST":
+			// Register new client.
+			id, err := NewID()
+			if err != nil {
+				Error500f(w, "NewID: %s", err)
+				return
+			}
+			// Create a topic for response.
+			respTopic, err := client.CreateTopic(ctx, id.Topic())
+			if err != nil {
+				Error500f(w, "client.CreateTopic: %s", err)
+				return
+			}
+			// Subscribe for response.
+			_, err = client.CreateSubscription(ctx, id.Subscription(),
+				pubsub.SubscriptionConfig{
+					Topic:            respTopic,
+					AckDeadline:      10 * time.Second,
+					ExpirationPolicy: 25 * time.Hour,
+				})
+			if err != nil {
+				Error500f(w, "client.CreateSubscription: %s", err)
+				return
+			}
+			result := &api.ConnectResult{
+				URL: "/clients/" + id.String(),
+			}
+			data, err := json.Marshal(result)
+			if err != nil {
+				Error500f(w, "json.Marshal: %s", err)
+				return
+			}
+			w.Write(data)
+
+		default:
+			Errorf(w, http.StatusBadRequest, "Unsupported method %s", r.Method)
 		}
+
+		return
 	}
 
-	// Subscribe for response.
-	sub := client.Subscription(respID)
-	ok, err = sub.Exists(ctx)
+	id, err := ParseID(clientID)
 	if err != nil {
-		Error500f(w, "sub.Exists: %s", err)
+		Error500f(w, "Invalid client ID: %s", err)
 		return
-	}
-	if !ok {
-		sub, err = client.CreateSubscription(ctx, respID,
-			pubsub.SubscriptionConfig{
-				Topic:            respTopic,
-				AckDeadline:      10 * time.Second,
-				ExpirationPolicy: 25 * time.Hour,
-			})
-		if err != nil {
-			Error500f(w, "client.CreateSubscription: %s", err)
-			return
-		}
 	}
 
 	switch r.Method {
@@ -90,19 +104,18 @@ func Client(w http.ResponseWriter, r *http.Request) {
 		}
 		// Send request.
 		reqTopic := client.Topic(TOPIC_AUTHORIZER)
-		defer reqTopic.Stop()
 		result := reqTopic.Publish(ctx, &pubsub.Message{
 			Data: data,
 			Attributes: map[string]string{
-				"response": respID,
+				"response": id.Topic(),
 			},
 		})
-		reqID, err := result.Get(ctx)
+		_, err = result.Get(ctx)
+		reqTopic.Stop()
 		if err != nil {
 			Error500f(w, "reqTopic.Publish: %s", err)
 			return
 		}
-		fmt.Fprintf(w, "request ID %s\n", reqID)
 		fallthrough
 
 	case "GET":
@@ -111,8 +124,9 @@ func Client(w http.ResponseWriter, r *http.Request) {
 		var response *pubsub.Message
 
 		cctx, cancel := context.WithCancel(ctx)
+		sub := client.Subscription(id.Subscription())
 		err = sub.Receive(cctx, func(ctx context.Context, m *pubsub.Message) {
-			fmt.Fprintf(w, "m: ID=%s, Data=%q, Attributes=%q\n",
+			fmt.Printf("m: ID=%s, Data=%q, Attributes=%q\n",
 				m.ID, m.Data, m.Attributes)
 			response = m
 			m.Ack()
@@ -127,5 +141,28 @@ func Client(w http.ResponseWriter, r *http.Request) {
 		} else {
 			w.Write(response.Data)
 		}
+
+	case "DELETE":
+		var msg string
+
+		err := client.Subscription(id.Subscription()).Delete(ctx)
+		if err != nil {
+			msg = fmt.Sprintf("Subscription: %s", err)
+		}
+		err = client.Topic(id.Topic()).Delete(ctx)
+		if err != nil {
+			if len(msg) > 0 {
+				msg += ", "
+			}
+			msg += fmt.Sprintf("Topic: %s", err)
+		}
+		if len(msg) > 0 {
+			Error500f(w, "%s", msg)
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+
+	default:
+		Errorf(w, http.StatusBadRequest, "Unsupported method %s", r.Method)
 	}
 }
