@@ -13,6 +13,8 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/markkurossi/authorizer"
 )
 
 type Server struct {
@@ -47,7 +49,7 @@ func (server *Server) Connect() error {
 		return httpError(resp.StatusCode, data)
 	}
 
-	response := new(ServerConnectResult)
+	response := new(authorizer.ServerConnectResult)
 	err = json.Unmarshal(data, response)
 	if err != nil {
 		return err
@@ -57,7 +59,7 @@ func (server *Server) Connect() error {
 	return nil
 }
 
-func (server *Server) Receive() (*Message, error) {
+func (server *Server) Receive() (*authorizer.Message, error) {
 	req, err := http.NewRequest("GET", server.url, nil)
 	if err != nil {
 		return nil, err
@@ -76,7 +78,7 @@ func (server *Server) Receive() (*Message, error) {
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			msg := new(Message)
+			msg := new(authorizer.Message)
 			err = json.Unmarshal(data, msg)
 			if err != nil {
 				return nil, err
@@ -92,7 +94,7 @@ func (server *Server) Receive() (*Message, error) {
 	}
 }
 
-func (server *Server) Send(msg *Message) error {
+func (server *Server) Send(msg *authorizer.Message) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return err

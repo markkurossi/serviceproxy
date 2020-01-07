@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/pubsub"
-	"github.com/markkurossi/authorizer/api"
 )
 
 var (
@@ -64,7 +63,7 @@ func Clients(w http.ResponseWriter, r *http.Request) {
 			Error500f(w, "client.CreateSubscription: %s", err)
 			return
 		}
-		result := &api.ClientConnectResult{
+		result := &ClientConnectResult{
 			URL: "/clients/" + id.String(),
 			ID:  id.String(),
 		}
@@ -116,7 +115,7 @@ func Client(w http.ResponseWriter, r *http.Request) {
 			Error500f(w, "ioutil.ReadAll: %s", err)
 			return
 		}
-		msg := new(api.Message)
+		msg := new(Message)
 		err = json.Unmarshal(data, msg)
 		if err != nil {
 			Errorf(w, http.StatusBadRequest, "Invalid message data: %s", err)
@@ -175,7 +174,7 @@ func Client(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		msg := new(api.Message)
+		msg := new(Message)
 		msg.SetBytes(response.Data)
 
 		data, err := json.Marshal(msg)

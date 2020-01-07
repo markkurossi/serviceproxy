@@ -6,7 +6,7 @@
 // All rights reserved.
 //
 
-package api
+package authorizer
 
 import (
 	"encoding/base64"

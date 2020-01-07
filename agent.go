@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/pubsub"
-	"github.com/markkurossi/authorizer/api"
 )
 
 var (
@@ -73,7 +72,7 @@ func Agents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		result := &api.ServerConnectResult{
+		result := &ServerConnectResult{
 			URL: "/agents/" + SUB_REQUESTS,
 		}
 		data, err := json.Marshal(result)
@@ -144,7 +143,7 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		msg := &api.Message{
+		msg := &Message{
 			From: from,
 		}
 		msg.SetBytes(request.Data)
@@ -160,7 +159,7 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			Error500f(w, "ioutil.ReadAll: %s", err)
 		}
-		msg := new(api.Message)
+		msg := new(Message)
 		err = json.Unmarshal(data, msg)
 		if err != nil {
 			Errorf(w, http.StatusBadRequest, "Invalid message data: %s", err)

@@ -14,6 +14,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+
+	"github.com/markkurossi/authorizer"
 )
 
 type Client struct {
@@ -54,7 +56,7 @@ func (client *Client) Connect() error {
 		return httpError(resp.StatusCode, data)
 	}
 
-	response := new(ClientConnectResult)
+	response := new(authorizer.ClientConnectResult)
 	err = json.Unmarshal(data, response)
 	if err != nil {
 		return err
@@ -87,7 +89,7 @@ func (client *Client) Disconnect() error {
 }
 
 func (client *Client) Call(msg []byte) ([]byte, error) {
-	envelope := &Message{
+	envelope := &authorizer.Message{
 		From: client.id,
 	}
 	envelope.SetBytes(msg)
@@ -117,7 +119,7 @@ func (client *Client) Call(msg []byte) ([]byte, error) {
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			env := new(Message)
+			env := new(authorizer.Message)
 			err = json.Unmarshal(data, env)
 			if err != nil {
 				return nil, err
