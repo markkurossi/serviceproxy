@@ -14,14 +14,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-
-	"github.com/markkurossi/authorizer/secsh/agent"
 )
 
 type Client struct {
 	http    *http.Client
 	baseURL string
 	url     string
+	id      string
 }
 
 func NewClient(endpoint string) (*Client, error) {
@@ -34,10 +33,6 @@ func NewClient(endpoint string) (*Client, error) {
 func (client *Client) ID() string {
 	parts := strings.Split(client.url, "/")
 	return parts[len(parts)-1]
-}
-
-type ClientConnectResult struct {
-	URL string `json:"url"`
 }
 
 func (client *Client) Connect() error {
@@ -65,6 +60,7 @@ func (client *Client) Connect() error {
 		return err
 	}
 	client.url = client.baseURL + response.URL
+	client.id = response.ID
 
 	return nil
 }
@@ -90,8 +86,18 @@ func (client *Client) Disconnect() error {
 	return nil
 }
 
-func (client *Client) Call(msg agent.Message) (agent.Message, error) {
-	req, err := http.NewRequest("POST", client.url, bytes.NewReader(msg))
+func (client *Client) Call(msg []byte) ([]byte, error) {
+	envelope := &Message{
+		From: client.id,
+	}
+	envelope.SetBytes(msg)
+
+	data, err := json.Marshal(envelope)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", client.url, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
@@ -99,12 +105,10 @@ func (client *Client) Call(msg agent.Message) (agent.Message, error) {
 	var get *http.Request
 
 	for {
-		//fmt.Printf("Req %v\n", req)
 		resp, err := client.http.Do(req)
 		if err != nil {
 			return nil, err
 		}
-		//fmt.Printf("Resp %v\n", resp)
 		data, err := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
@@ -113,7 +117,12 @@ func (client *Client) Call(msg agent.Message) (agent.Message, error) {
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			return agent.Wrap(data)
+			env := new(Message)
+			err = json.Unmarshal(data, env)
+			if err != nil {
+				return nil, err
+			}
+			return env.Bytes()
 
 		case http.StatusAccepted:
 			if get == nil {

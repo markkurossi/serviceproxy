@@ -14,6 +14,7 @@ import (
 const (
 	TOPIC_AUTHORIZER = "Authorizer"
 	SUB_REQUESTS     = "Requests"
+	ATTR_RESPONSE    = "response"
 )
 
 var (
@@ -65,5 +66,12 @@ func NewID() (ID, error) {
 }
 
 func ParseID(str string) (ID, error) {
-	return hex.DecodeString(str)
+	data, err := hex.DecodeString(str)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) < 4 {
+		return nil, fmt.Errorf("Truncated ID '%s'", str)
+	}
+	return data, nil
 }

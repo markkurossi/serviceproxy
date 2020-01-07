@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"regexp"
@@ -115,14 +116,16 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case "GET":
-		var response *pubsub.Message
+		var request *pubsub.Message
 
 		cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 		err = sub.Receive(cctx, func(ctx context.Context, m *pubsub.Message) {
-			fmt.Printf("m: ID=%s, Data=%q, Attributes=%q\n",
-				m.ID, m.Data, m.Attributes)
-			response = m
+			if false {
+				fmt.Printf("m: ID=%s, Data=%q, Attributes=%q\n",
+					m.ID, m.Data, m.Attributes)
+			}
+			request = m
 			m.Ack()
 			cancel()
 		})
@@ -130,10 +133,60 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 			Error500f(w, "sub.Receive: %s", err)
 			return
 		}
-		if response == nil {
+		if request == nil {
 			w.WriteHeader(http.StatusNoContent)
-		} else {
-			w.Write(response.Data)
+			return
+		}
+
+		from, ok := request.Attributes[ATTR_RESPONSE]
+		if !ok {
+			Errorf(w, http.StatusBadRequest, "No sender ID in message")
+			return
+		}
+
+		msg := &api.Message{
+			From: from,
+		}
+		msg.SetBytes(request.Data)
+		data, err := json.Marshal(msg)
+		if err != nil {
+			Error500f(w, "json.Marshal: %s", err)
+			return
+		}
+		w.Write(data)
+
+	case "POST":
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			Error500f(w, "ioutil.ReadAll: %s", err)
+		}
+		msg := new(api.Message)
+		err = json.Unmarshal(data, msg)
+		if err != nil {
+			Errorf(w, http.StatusBadRequest, "Invalid message data: %s", err)
+			return
+		}
+		payload, err := msg.Bytes()
+		if err != nil {
+			Errorf(w, http.StatusBadRequest, "Invalid message payload: %s", err)
+			return
+		}
+		id, err := ParseID(msg.To)
+		if err != nil {
+			Errorf(w, http.StatusBadRequest, "Invalid destination ID '%s': %s",
+				msg.To, err)
+			return
+		}
+
+		topic := client.Topic(id.Topic())
+		result := topic.Publish(ctx, &pubsub.Message{
+			Data: payload,
+		})
+		_, err = result.Get(ctx)
+		topic.Stop()
+		if err != nil {
+			Error500f(w, "topic.Publish: %s", err)
+			return
 		}
 
 	default:

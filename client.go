@@ -66,6 +66,7 @@ func Clients(w http.ResponseWriter, r *http.Request) {
 		}
 		result := &api.ClientConnectResult{
 			URL: "/clients/" + id.String(),
+			ID:  id.String(),
 		}
 		data, err := json.Marshal(result)
 		if err != nil {
@@ -115,12 +116,30 @@ func Client(w http.ResponseWriter, r *http.Request) {
 			Error500f(w, "ioutil.ReadAll: %s", err)
 			return
 		}
+		msg := new(api.Message)
+		err = json.Unmarshal(data, msg)
+		if err != nil {
+			Errorf(w, http.StatusBadRequest, "Invalid message data: %s", err)
+			return
+		}
+		payload, err := msg.Bytes()
+		if err != nil {
+			Errorf(w, http.StatusBadRequest, "Invalid message payload: %s", err)
+			return
+		}
+		id, err := ParseID(msg.From)
+		if err != nil {
+			Errorf(w, http.StatusBadRequest, "Invalid from ID '%s': %s",
+				msg.From, err)
+			return
+		}
+
 		// Send request.
 		reqTopic := client.Topic(TOPIC_AUTHORIZER)
 		result := reqTopic.Publish(ctx, &pubsub.Message{
-			Data: data,
+			Data: payload,
 			Attributes: map[string]string{
-				"response": id.Topic(),
+				ATTR_RESPONSE: id.String(),
 			},
 		})
 		_, err = result.Get(ctx)
@@ -139,8 +158,10 @@ func Client(w http.ResponseWriter, r *http.Request) {
 		cctx, cancel := context.WithCancel(ctx)
 		sub := client.Subscription(id.Subscription())
 		err = sub.Receive(cctx, func(ctx context.Context, m *pubsub.Message) {
-			fmt.Printf("m: ID=%s, Data=%q, Attributes=%q\n",
-				m.ID, m.Data, m.Attributes)
+			if false {
+				fmt.Printf("m: ID=%s, Data=%q, Attributes=%q\n",
+					m.ID, m.Data, m.Attributes)
+			}
 			response = m
 			m.Ack()
 			cancel()
@@ -151,9 +172,18 @@ func Client(w http.ResponseWriter, r *http.Request) {
 		}
 		if response == nil {
 			w.WriteHeader(http.StatusAccepted)
-		} else {
-			w.Write(response.Data)
+			return
 		}
+
+		msg := new(api.Message)
+		msg.SetBytes(response.Data)
+
+		data, err := json.Marshal(msg)
+		if err != nil {
+			Error500f(w, "json.Marshal: %s", err)
+			return
+		}
+		w.Write(data)
 
 	case "DELETE":
 		var msg string

@@ -9,11 +9,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
-
-	"github.com/markkurossi/authorizer/secsh/agent"
 )
 
 type Server struct {
@@ -27,10 +26,6 @@ func NewServer(endpoint string) (*Server, error) {
 		http:    new(http.Client),
 		baseURL: canonizeEndpoint(endpoint),
 	}, nil
-}
-
-type ServerConnectResult struct {
-	URL string `json:"url"`
 }
 
 func (server *Server) Connect() error {
@@ -62,7 +57,7 @@ func (server *Server) Connect() error {
 	return nil
 }
 
-func (server *Server) Receive() (agent.Message, error) {
+func (server *Server) Receive() (*Message, error) {
 	req, err := http.NewRequest("GET", server.url, nil)
 	if err != nil {
 		return nil, err
@@ -81,7 +76,12 @@ func (server *Server) Receive() (agent.Message, error) {
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			return agent.Wrap(data)
+			msg := new(Message)
+			err = json.Unmarshal(data, msg)
+			if err != nil {
+				return nil, err
+			}
+			return msg, nil
 
 		case http.StatusNoContent:
 			// Retry
@@ -90,4 +90,30 @@ func (server *Server) Receive() (agent.Message, error) {
 			return nil, httpError(resp.StatusCode, data)
 		}
 	}
+}
+
+func (server *Server) Send(msg *Message) error {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", server.url, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+
+	resp, err := server.http.Do(req)
+	if err != nil {
+		return err
+	}
+	data, err = ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return httpError(resp.StatusCode, data)
+	}
+
+	return nil
 }

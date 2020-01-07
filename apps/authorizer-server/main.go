@@ -15,6 +15,7 @@ import (
 	"os"
 
 	"github.com/markkurossi/authorizer/api"
+	"github.com/markkurossi/authorizer/secsh/agent"
 )
 
 func main() {
@@ -39,12 +40,35 @@ func main() {
 	}
 
 	for {
-		req, err := server.Receive()
+		msg, err := server.Receive()
 		if err != nil {
 			fmt.Printf("Receive error: %s\n", err)
 			// XXX server.Disconnect
 			os.Exit(1)
 		}
-		log.Printf("<- %s\n", req)
+		data, err := msg.Bytes()
+		if err != nil {
+			fmt.Printf("Invalid message: %v\n", msg)
+			continue
+		}
+		payload, err := agent.Wrap(data)
+		if err != nil {
+			fmt.Printf("Invalid SSH agent message: %v\n", err)
+			continue
+		}
+		log.Printf("%s <- %s\n", msg.From, payload)
+
+		if payload.Type() == 255 {
+			msg.To = msg.From
+		} else {
+			fmt.Printf("Agent operations not implemented yet\n")
+			os.Exit(1)
+		}
+
+		err = server.Send(msg)
+		if err != nil {
+			fmt.Printf("Send error: %s\n", err)
+			os.Exit(1)
+		}
 	}
 }
