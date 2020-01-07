@@ -1,5 +1,6 @@
 
 NAME := Authorizer
+REGION := us-east1
 
 all:
 	@echo "Targets: deploy describe delete"
@@ -8,7 +9,7 @@ all:
 # select another function with the --entry-point=NAME option.
 
 deploy:
-	gcloud functions deploy $(NAME) --runtime go111 --trigger-http
+	gcloud functions deploy $(NAME) --region $(REGION) --runtime go111 --trigger-http
 
 describe:
 	gcloud functions describe $(NAME)

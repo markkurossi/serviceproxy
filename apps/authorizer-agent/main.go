@@ -161,7 +161,7 @@ func runBenchmark(client *api.Client) error {
 
 	var min, max, total time.Duration
 
-	iterations := 5
+	iterations := 10
 
 	for i := 0; i < iterations; i++ {
 		start := time.Now()
