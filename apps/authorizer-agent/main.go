@@ -139,6 +139,7 @@ func handleConnection(conn net.Conn, url string) error {
 		if err != nil {
 			return err
 		}
+		log.Printf("-> %s\n", resp)
 
 		_, err = conn.Write(resp)
 		if err != nil {
