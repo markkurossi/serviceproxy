@@ -126,7 +126,7 @@ func (client *Client) Call(msg []byte) ([]byte, error) {
 			}
 			return env.Bytes()
 
-		case http.StatusAccepted:
+		case http.StatusAccepted, http.StatusRequestTimeout:
 			if get == nil {
 				get, err = http.NewRequest("GET", client.url, nil)
 				if err != nil {

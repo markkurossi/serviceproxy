@@ -85,7 +85,7 @@ func (server *Server) Receive() (*authorizer.Message, error) {
 			}
 			return msg, nil
 
-		case http.StatusNoContent:
+		case http.StatusRequestTimeout:
 			// Retry
 
 		default:

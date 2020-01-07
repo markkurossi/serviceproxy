@@ -154,7 +154,16 @@ func Client(w http.ResponseWriter, r *http.Request) {
 
 		var response *pubsub.Message
 
-		cctx, cancel := context.WithCancel(ctx)
+		var timeout time.Duration
+		if r.Method == "POST" {
+			timeout = 30 * time.Second
+		} else {
+			timeout = 15 * time.Second
+		}
+
+		cctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
 		sub := client.Subscription(id.Subscription())
 		err = sub.Receive(cctx, func(ctx context.Context, m *pubsub.Message) {
 			if false {
@@ -170,7 +179,11 @@ func Client(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if response == nil {
-			w.WriteHeader(http.StatusAccepted)
+			if r.Method == "POST" {
+				w.WriteHeader(http.StatusAccepted)
+			} else {
+				w.WriteHeader(http.StatusRequestTimeout)
+			}
 			return
 		}
 

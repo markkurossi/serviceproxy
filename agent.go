@@ -117,8 +117,12 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		var request *pubsub.Message
 
-		cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
+
+		// XXX Request processing must be moved inside receive
+		// function. We must ACK the message only if we correctly
+		// passed it to our caller.
 		err = sub.Receive(cctx, func(ctx context.Context, m *pubsub.Message) {
 			if false {
 				fmt.Printf("m: ID=%s, Data=%q, Attributes=%q\n",
@@ -133,7 +137,7 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if request == nil {
-			w.WriteHeader(http.StatusNoContent)
+			w.WriteHeader(http.StatusRequestTimeout)
 			return
 		}
 
