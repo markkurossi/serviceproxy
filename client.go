@@ -1,6 +1,10 @@
-/*
- * client.go
- */
+//
+// client.go
+//
+// Copyright (c) 2020 Markku Rossi
+//
+// All rights reserved.
+//
 
 package authorizer
 
@@ -9,12 +13,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"regexp"
 	"time"
 
 	"cloud.google.com/go/pubsub"
+	"github.com/markkurossi/cloudsdk/api/auth"
 )
 
 var (
@@ -23,15 +27,15 @@ var (
 
 // Clients hand REST calls to the "/clients" URI.
 func Clients(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s: %s\n", r.Method, r.URL.Path)
+	fmt.Printf("%s: %s\n", r.Method, r.URL.Path)
+
+	token := auth.Authorize(w, r, REALM, tokenVerifier, nil)
+	if token == nil {
+		return
+	}
 
 	ctx := context.Background()
 
-	projectID, err := GetProjectID()
-	if err != nil {
-		Error500f(w, "google.FindDefaultCredentials: %s", err)
-		return
-	}
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
 		Error500f(w, "NewClient failed: %s", err)
@@ -81,7 +85,12 @@ func Clients(w http.ResponseWriter, r *http.Request) {
 
 // Clients hand REST calls to the "/clients/{ID}" URI.
 func Client(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s: %s\n", r.Method, r.URL.Path)
+	fmt.Printf("%s: %s\n", r.Method, r.URL.Path)
+
+	token := auth.Authorize(w, r, REALM, tokenVerifier, nil)
+	if token == nil {
+		return
+	}
 
 	m := rePath.FindStringSubmatch(r.URL.Path)
 	if m == nil {
@@ -92,11 +101,6 @@ func Client(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	projectID, err := GetProjectID()
-	if err != nil {
-		Error500f(w, "google.FindDefaultCredentials: %s", err)
-		return
-	}
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
 		Error500f(w, "NewClient failed: %s", err)

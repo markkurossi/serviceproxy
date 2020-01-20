@@ -1,6 +1,10 @@
-/*
- * agent.go
- */
+//
+// agent.go
+//
+// Copyright (c) 2020 Markku Rossi
+//
+// All rights reserved.
+//
 
 package authorizer
 
@@ -9,12 +13,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"regexp"
 	"time"
 
 	"cloud.google.com/go/pubsub"
+	"github.com/markkurossi/cloudsdk/api/auth"
 )
 
 var (
@@ -22,15 +26,15 @@ var (
 )
 
 func Agents(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s: %s\n", r.Method, r.URL.Path)
+	fmt.Printf("%s: %s\n", r.Method, r.URL.Path)
+
+	token := auth.Authorize(w, r, REALM, tokenVerifier, nil)
+	if token == nil {
+		return
+	}
 
 	ctx := context.Background()
 
-	projectID, err := GetProjectID()
-	if err != nil {
-		Error500f(w, "google.FindDefaultCredentials: %s", err)
-		return
-	}
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
 		Error500f(w, "NewClient failed: %s", err)
@@ -88,7 +92,12 @@ func Agents(w http.ResponseWriter, r *http.Request) {
 }
 
 func Agent(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s: %s\n", r.Method, r.URL.Path)
+	fmt.Printf("%s: %s\n", r.Method, r.URL.Path)
+
+	token := auth.Authorize(w, r, REALM, tokenVerifier, nil)
+	if token == nil {
+		return
+	}
 
 	m := reAgentPath.FindStringSubmatch(r.URL.Path)
 	if m == nil {
@@ -98,12 +107,6 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 	agentID := m[1]
 
 	ctx := context.Background()
-
-	projectID, err := GetProjectID()
-	if err != nil {
-		Error500f(w, "google.FindDefaultCredentials: %s", err)
-		return
-	}
 
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
@@ -162,6 +165,7 @@ func Agent(w http.ResponseWriter, r *http.Request) {
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			Error500f(w, "ioutil.ReadAll: %s", err)
+			return
 		}
 		msg := new(Message)
 		err = json.Unmarshal(data, msg)

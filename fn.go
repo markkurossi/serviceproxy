@@ -1,25 +1,43 @@
-/*
- * fn.go
- */
+//
+// fn.go
+//
+// Copyright (c) 2020 Markku Rossi
+//
+// All rights reserved.
+//
 
 package authorizer
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
+
+	"github.com/markkurossi/cloudsdk/api/auth"
+	"github.com/markkurossi/go-libs/fn"
 )
 
 const (
+	REALM            = "Service Proxy"
 	TOPIC_AUTHORIZER = "Authorizer"
 	SUB_REQUESTS     = "Requests"
 	ATTR_RESPONSE    = "response"
 )
 
 var (
-	mux *http.ServeMux
+	mux        *http.ServeMux
+	projectID  string
+	store      *auth.ClientStore
+	authPubkey ed25519.PublicKey
 )
+
+func Fatalf(format string, a ...interface{}) {
+	fmt.Printf(format, a...)
+	os.Exit(1)
+}
 
 func init() {
 	mux = http.NewServeMux()
@@ -27,10 +45,34 @@ func init() {
 	mux.HandleFunc("/agents/", Agent)
 	mux.HandleFunc("/clients", Clients)
 	mux.HandleFunc("/clients/", Client)
+
+	id, err := fn.GetProjectID()
+	if err != nil {
+		Fatalf("GetProjectID: %s\n", err)
+	}
+	projectID = id
+
+	store, err = auth.NewClientStore()
+	if err != nil {
+		Fatalf("NewClientStore: %s\n", err)
+	}
+
+	assets, err := store.Asset(auth.ASSET_AUTH_PUBKEY)
+	if err != nil {
+		Fatalf("store.Asset(%s)\n", auth.ASSET_AUTH_PUBKEY)
+	}
+	if len(assets) == 0 {
+		Fatalf("No auth public key\n")
+	}
+	authPubkey = ed25519.PublicKey(assets[0].Data)
 }
 
-func Authorizer(w http.ResponseWriter, r *http.Request) {
+func ServiceProxy(w http.ResponseWriter, r *http.Request) {
 	mux.ServeHTTP(w, r)
+}
+
+func tokenVerifier(message, sig []byte) bool {
+	return ed25519.Verify(authPubkey, message, sig)
 }
 
 func Errorf(w http.ResponseWriter, code int, format string, a ...interface{}) {

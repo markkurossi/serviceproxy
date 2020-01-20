@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	funcframework.RegisterHTTPFunction("/", authorizer.Authorizer)
+	funcframework.RegisterHTTPFunction("/", authorizer.ServiceProxy)
 	// Use PORT environment variable, or default to 8080.
 	port := "8080"
 	if envPort := os.Getenv("PORT"); envPort != "" {

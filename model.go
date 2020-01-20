@@ -1,7 +1,7 @@
 //
 // model.go
 //
-// Copyright (c) 2019 Markku Rossi
+// Copyright (c) 2020 Markku Rossi
 //
 // All rights reserved.
 //
