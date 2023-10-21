@@ -8,7 +8,7 @@ all:
 # select another function with the --entry-point=NAME option.
 
 deploy:
-	gcloud functions deploy $(NAME) --runtime go113 --trigger-http
+	gcloud functions deploy $(NAME) --runtime go121 --trigger-http
 
 describe:
 	gcloud functions describe $(NAME)
